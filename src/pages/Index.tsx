@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { Brain, Sparkles, Users, Target } from 'lucide-react';
+import { Brain, Sparkles, Users, Target, Mic } from 'lucide-react';
 import { RoleSelector } from '@/components/RoleSelector';
 import { QuestionCard } from '@/components/QuestionCard';
 import { PerformanceReport } from '@/components/PerformanceReport';
+import { AudioRecorder } from '@/components/AudioRecorder';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { InterviewRole, InterviewQuestion, AnswerFeedback } from '@/types/interview';
 import { questionsByRole } from '@/data/interviewData';
 import { evaluateAnswer, generatePerformanceReport } from '@/utils/aiEvaluation';
@@ -13,6 +15,8 @@ export default function Index() {
   const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
   const [feedbacks, setFeedbacks] = useState<Record<string, AnswerFeedback>>({});
   const [showReport, setShowReport] = useState(false);
+  const [activeTab, setActiveTab] = useState('text');
+  const [currentVoiceQuestion, setCurrentVoiceQuestion] = useState<InterviewQuestion | null>(null);
 
   const generateQuestions = () => {
     if (!selectedRole) return;
@@ -35,6 +39,34 @@ export default function Index() {
     }));
 
     return feedback;
+  };
+
+  const handleVoiceEvaluation = (evaluation: any) => {
+    if (!currentVoiceQuestion) return;
+    
+    // Convert voice evaluation to standard feedback format
+    const feedback: AnswerFeedback = {
+      score: evaluation.score,
+      clarity: evaluation.clarity,
+      knowledge: Math.floor((evaluation.score + evaluation.fluency) / 2),
+      grammar: evaluation.fluency,
+      confidence: evaluation.confidence,
+      feedback: evaluation.feedback,
+      suggestions: evaluation.suggestions,
+      sentiment: evaluation.sentiment === 'positive' ? 'Positive' : 
+                evaluation.sentiment === 'negative' ? 'Negative' : 'Neutral',
+      strengths: [
+        evaluation.clarity >= 7 ? 'Clear communication' : null,
+        evaluation.confidence >= 7 ? 'Confident delivery' : null,
+        evaluation.fluency >= 7 ? 'Smooth speech flow' : null
+      ].filter(Boolean),
+      improvements: evaluation.suggestions.slice(0, 3)
+    };
+    
+    setFeedbacks(prev => ({
+      ...prev,
+      [currentVoiceQuestion.id]: feedback
+    }));
   };
 
   const generateReport = () => {
@@ -168,17 +200,69 @@ export default function Index() {
               </div>
             </div>
 
-            {/* Question Cards */}
-            <div className="space-y-8">
-              {questions.map((question) => (
-                <QuestionCard
-                  key={question.id}
-                  question={question}
-                  onAnswerSubmit={handleAnswerSubmit}
-                  feedback={feedbacks[question.id]}
-                />
-              ))}
-            </div>
+            {/* Interview Mode Tabs */}
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-8">
+              <TabsList className="grid w-full grid-cols-2 mb-6">
+                <TabsTrigger value="text" className="flex items-center space-x-2">
+                  <Sparkles className="h-4 w-4" />
+                  <span>Text Interview</span>
+                </TabsTrigger>
+                <TabsTrigger value="voice" className="flex items-center space-x-2">
+                  <Mic className="h-4 w-4" />
+                  <span>Voice Interview</span>
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="text" className="space-y-8">
+                {questions.map((question) => (
+                  <QuestionCard
+                    key={question.id}
+                    question={question}
+                    onAnswerSubmit={handleAnswerSubmit}
+                    feedback={feedbacks[question.id]}
+                  />
+                ))}
+              </TabsContent>
+
+              <TabsContent value="voice" className="space-y-8">
+                <div className="grid gap-6">
+                  {/* Voice Question Selector */}
+                  <div className="bg-gradient-card border border-border/50 rounded-lg p-6">
+                    <h3 className="text-lg font-semibold text-foreground mb-4">
+                      Select a Question for Voice Practice
+                    </h3>
+                    <div className="grid gap-3">
+                      {questions.map((question) => (
+                        <Button
+                          key={question.id}
+                          variant={currentVoiceQuestion?.id === question.id ? "default" : "outline"}
+                          onClick={() => setCurrentVoiceQuestion(question)}
+                          className="justify-start text-left h-auto p-4"
+                        >
+                          <div className="space-y-1">
+                            <div className="font-medium">{question.category}</div>
+                            <div className="text-sm text-muted-foreground line-clamp-2">
+                              {question.question}
+                            </div>
+                            {feedbacks[question.id] && (
+                              <div className="text-xs text-success">✓ Completed</div>
+                            )}
+                          </div>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Voice Recording Component */}
+                  {currentVoiceQuestion && (
+                    <AudioRecorder
+                      question={currentVoiceQuestion.question}
+                      onEvaluationComplete={handleVoiceEvaluation}
+                    />
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
 
             {/* Bottom CTA */}
             {answeredQuestions > 0 && (
